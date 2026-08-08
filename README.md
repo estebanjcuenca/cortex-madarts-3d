@@ -2,7 +2,7 @@
 
 Interactive 3D visualization of the MadArts CORTEX space — concentric ring curtains, walkthrough camera modes, heatmap overlays, and GIF recording.
 
-**Live demo:** after publishing, open `https://<your-username>.github.io/cortex-madarts-3d/`
+**Live demo:** [https://estebanjcuenca.github.io/cortex-madarts-3d/](https://estebanjcuenca.github.io/cortex-madarts-3d/)
 
 ## Features
 
