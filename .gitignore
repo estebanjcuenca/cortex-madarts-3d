@@ -4,3 +4,10 @@ dist/
 .DS_Store
 *.log
 .env*
+
+# The architect's drawing. Ours to work from, not ours to publish — and this repo and its
+# GitHub Pages deploy are both public. Kept on the working machine only; the floorplan
+# panel's underlay toggle disables itself when the file is not there. Every dimension
+# derived from it already lives as plain numbers in src/floorplan.js, so nothing in the
+# model depends on this file being present.
+public/floorplan2.svg

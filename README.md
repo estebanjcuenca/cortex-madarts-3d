@@ -29,6 +29,15 @@ npm run dev
 
 Open the URL Vite prints (typically `http://localhost:5173`).
 
+### The architect's drawing is not in this repo
+
+`public/floorplan2.svg` is git-ignored on purpose. It is the architects' drawing, this repo and
+its deployed site are both public, and publishing their file is not ours to do. Nothing in the
+model needs it — every dimension taken from it is already a plain number in `src/floorplan.js`.
+It is used for one thing: the faint underlay behind the floorplan panel (press `X`), so a live
+drawing can be compared against the original. Drop the file at that path to get the underlay
+back; without it the panel simply disables its underlay checkbox.
+
 ## Production build
 
 ```bash

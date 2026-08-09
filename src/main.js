@@ -2021,10 +2021,12 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   // A LIVE vector floorplan, generated entirely from the model state and drawn directly
   // in METRES (x from the room centerline, y = plan z from the near/booth wall). Every
   // distance/position edit re-renders it, so the 3D scene and this drawing can never
-  // drift apart. The architect's original drawing (public/floorplan.svg) is available as
-  // a toggleable underlay, mapped into the same metre space through
-  // FLOORPLAN_SVG.unitsPerMeter, for direct visual comparison. Ring arcs are clickable —
-  // they open and flash that ring's control row — and the whole drawing exports as SVG.
+  // drift apart. The architect's original drawing (public/floorplan2.svg) can be shown
+  // beneath it as a toggleable underlay, mapped into the same metre space through
+  // FLOORPLAN_SVG.unitsPerMeter, for direct visual comparison — but that drawing is not
+  // ours to publish, so it is git-ignored and absent from any deployed build; the panel
+  // detects that and disables the toggle. Ring arcs are clickable — they open and flash
+  // that ring's control row — and the whole drawing exports as SVG.
   const fpPanel = document.getElementById('floorplanPanel');
   const FP_NS = 'http://www.w3.org/2000/svg';
   const fpMk = (tag, attrs)=>{ const el = document.createElementNS(FP_NS, tag); for(const k in attrs) el.setAttribute(k, attrs[k]); return el; };
@@ -2072,8 +2074,17 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     fpSvgEl.appendChild(fpOverlay);
     document.getElementById('fpCanvas').appendChild(fpSvgEl);
 
-    document.getElementById('fpUnderlayToggle').addEventListener('change', (e)=>{
+    const underlayToggle = document.getElementById('fpUnderlayToggle');
+    underlayToggle.addEventListener('change', (e)=>{
       under.style.display = e.target.checked ? '' : 'none';
+    });
+    // Presence decides, not the build mode: whoever has the drawing sees it, and a build
+    // shipped without it says so rather than leaving a ticked box over an empty layer.
+    img.addEventListener('error', ()=>{
+      under.remove();
+      underlayToggle.checked = false;
+      underlayToggle.disabled = true;
+      underlayToggle.closest('label').append(' (not included in this build)');
     });
     document.getElementById('fpDownload').addEventListener('click', ()=>{
       const clone = fpSvgEl.cloneNode(true);
