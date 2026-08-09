@@ -1,39 +1,65 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 → 1.1.0
-- Modified principles: None
-- Added sections: Future Direction (WebGPU, materials, lighting roadmap)
+- Version change: 1.1.0 → 1.2.0
+- Modified principles:
+  - I. "No Build Step by Default" → "Static Deployment, Bundled Build" — records that Vite was
+    adopted in feature 002 and is now the assumed toolchain. The protected outcome (a static,
+    server-free GitHub Pages deployment) is unchanged; only the means changed.
+  - II. "Render Loop Integrity" — the protected capture mechanism is now MediaRecorder via
+    captureVideoFrame(); gif.js and captureGifFrame() no longer exist. The intent (capture must
+    work in every camera mode) is unchanged and now enforced by the single renderFrame() entry
+    point.
+- Modified sections: Technical Constraints — runtime is bundled ES modules, not CDN script tags;
+  the module-split constraint now points at feature 005 rather than treating a build step as
+  hypothetical.
+- Added sections: None
 - Removed sections: None
-- Follow-up TODOs: None — future work requires dedicated /speckit-specify when ready
+- Rationale: Principles I and II described a codebase that no longer existed, so every
+  Constitution Check since feature 002 has been evaluated against stale text. This amendment is
+  documentation debt repayment, not a change of intent. Ratified as MINOR because it materially
+  expands two principles without removing or redefining any.
+- Follow-up TODOs:
+  - specs/002-light-realism-maze-fix/research.md R1 gates WebGPU re-evaluation on GIF capture
+    working; substitute the video capture path when that spec is written (see specs/BACKLOG.md B1).
 -->
 
 # CORTEX — MadArts 3D Visualization Constitution
 
 ## Core Principles
 
-### I. No Build Step by Default
+### I. Static Deployment, Bundled Build
 
-The project MUST remain runnable as a static demo: open `index.html` in a browser
-or serve the repo root with a simple HTTP server. No bundler, npm install, or compile
-step is required for the shareable GitHub Pages deployment on `main`.
+The project MUST deploy as **static files only** — no server-side logic, no runtime
+backend. That is the outcome this principle protects, and it is non-negotiable.
 
-Introducing a build toolchain (e.g., Vite, webpack) is a **major architectural
-decision**. It MUST be documented in the feature spec and plan, justified against
-this principle in the Constitution Check, and approved before implementation. The
-handoff notes in `index.html` explicitly flag this as a suggested future step — not
-an assumed default.
+**Vite is the adopted toolchain** (introduced in feature 002). `npm install` and
+`npm run build` are assumed; the build output is what ships to GitHub Pages on `main`.
+The earlier "no bundler" requirement is superseded — it described the pre-002
+single-file prototype.
+
+Replacing or removing the build toolchain remains a **major architectural decision**:
+it MUST be documented in the feature spec and plan, justified in the Constitution
+Check, and approved before implementation. Adding a *runtime* dependency on a server,
+database, or authenticated API is a violation of this principle, not merely a decision
+to justify.
 
 ### II. Render Loop Integrity
 
-The main animation/render loop is shared infrastructure for orbit controls, all
-camera modes, and GIF capture (`captureGifFrame()`). Any change to the render loop
-MUST preserve the GIF recording hook so recording works in orbit, walk, central-orbit,
-and plan views equally.
+The main animation/render loop is shared infrastructure for orbit controls, all camera
+modes, still capture, and video recording (`captureVideoFrame()`). Any change to the
+render loop MUST preserve the capture hook so recording works in orbit, walk,
+central-orbit, and plan views equally.
 
-GIF recording depends on gif.js (CDN) and a cross-origin Worker loaded via a
-fetch+Blob workaround (`getGifWorkerUrl()`). This path is fragile (network + CORS).
-Changes MUST NOT break it; offline fallback beyond existing user-facing errors is out
-of scope unless explicitly specced.
+**All frames MUST route through the single render entry point** (`renderFrame()`, and
+its successor `stageContext.render()`), which draws through the `EffectComposer` and
+the CSS2D label renderer. Calling `composer.render()` or `renderer.render()` directly
+bypasses post-processing and labels, and silently breaks saved images and recordings.
+
+Video recording uses `MediaRecorder` over an offscreen canvas fed by
+`captureVideoFrame()`, which reads `renderer.domElement` each main-loop frame and
+therefore depends on `preserveDrawingBuffer`. The earlier gif.js path
+(`captureGifFrame()`, `getGifWorkerUrl()`, cross-origin Worker via fetch+Blob) has been
+removed; references to it in feature 002's task list and research are historical.
 
 ### III. Camera Mode Safety (NON-NEGOTIABLE)
 
@@ -84,13 +110,15 @@ New geometry work MUST document what is confirmed vs. estimated.
 
 ## Technical Constraints
 
-- **Runtime:** Modern browsers with WebGL; Three.js loaded via CDN script tags today.
-- **Deployment:** Static files only on GitHub Pages — no server-side logic.
+- **Runtime:** Modern browsers with WebGL2. Three.js is an npm dependency bundled by
+  Vite as ES modules — not CDN script tags.
+- **Deployment:** Static build output on GitHub Pages — no server-side logic.
 - **Assets:** External models/textures MUST use paths compatible with static hosting
   (relative URLs or CDN). Large assets MUST be justified for Page load time.
-- **Module split:** `index.html` is a single ~1,300-line file. New features SHOULD
-  move toward modular files when a build step is approved; until then, changes MUST
-  stay localized and well-commented to avoid unmaintainable growth.
+- **Module split:** `src/main.js` is the orchestrator and has grown past 1,800 lines.
+  Feature 005 restructures it into documented domain components; until that lands, new
+  domain logic SHOULD go into a module under `src/` rather than into `main.js`, and any
+  change to `main.js` MUST stay localized and well-commented.
 - **Input validation:** DOM-driven numeric inputs (ring count, spacing, occupancy)
   currently trust sane values — new or touched inputs SHOULD add guards when modified.
 
@@ -128,7 +156,9 @@ WebGPU is a **major platform bet**, not a drop-in realism toggle. Adopt only whe
    which handoff notes flag as still inconsistent for shareable links.
 3. A **fallback or parallel build** exists so `main` GitHub Pages demo does not
    break for WebGL-only users, OR the audience explicitly accepts a WebGPU-only demo.
-4. GIF recording and orbit/walk camera modes are re-validated under the new renderer.
+4. Video recording (`captureVideoFrame()` / `MediaRecorder`), still capture, and all
+   camera modes are re-validated under the new renderer — WebGPU swap-chain semantics
+   differ from `preserveDrawingBuffer`, so this path is the highest migration risk.
 
 Likely path: Three.js WebGPU renderer (`WebGPURenderer`) or TSL node materials,
 not a greenfield engine rewrite — unless cloth simulation or similar forces Unreal/Unity.
@@ -139,7 +169,7 @@ Once Stage 2 gates pass, target advanced techniques as specced per feature:
 
 - Node-based / procedural materials (fabric sheen, light falloff, emissive pulse)
 - Higher-fidelity shadows and reflections
-- Post-processing beyond basic bloom (careful with perf + GIF capture compatibility)
+- Post-processing beyond basic bloom (careful with perf + video capture compatibility)
 
 **Cloth simulation** on ring curtains remains a separate decision — handoff notes
 point to Unreal/Unity only if that becomes a hard requirement, not WebGPU alone.
@@ -167,8 +197,8 @@ This constitution supersedes ad-hoc implementation choices. Amendments require:
 All feature plans MUST include a Constitution Check section. Violations MUST be
 listed in Complexity Tracking with rationale — silent violations are not permitted.
 
-Runtime handoff notes in the `index.html` comment block remain authoritative context
+Runtime handoff notes in the `Index.html` comment block remain authoritative context
 for known limitations and bug history; the constitution codifies the non-negotiable
 rules derived from them.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-08 | **Last Amended**: 2026-08-08
+**Version**: 1.2.0 | **Ratified**: 2026-08-08 | **Last Amended**: 2026-08-09

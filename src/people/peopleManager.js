@@ -1,6 +1,10 @@
 import * as THREE from 'three';
-import { createPersonMesh, placePersonOnFloor } from './personFactory.js';
-import { isHumanoidReady } from './modelLoader.js';
+import {
+  createPersonMesh,
+  faceTowardCentralLight,
+  placePersonOnFloor,
+} from './personFactory.js';
+import { isHumanoidReady, pickSpawnVariant } from './modelLoader.js';
 
 export function createPeopleManager({
   gPeople,
@@ -11,11 +15,6 @@ export function createPeopleManager({
   updateOccupancyUI,
 }) {
   const people = [];
-  let template = null;
-
-  function setTemplate(scene) {
-    template = scene;
-  }
 
   function isInsideDisc(worldPoint) {
     const center = getCircleCenter();
@@ -31,14 +30,20 @@ export function createPeopleManager({
     return group;
   }
 
+  function finalizePlacement(person, worldPoint) {
+    placePersonOnFloor(person, worldPoint);
+    faceTowardCentralLight(person, getCircleCenter());
+  }
+
   function addPersonAtPoint(worldPoint) {
-    if (!isHumanoidReady() || !template) return null;
+    if (!isHumanoidReady()) return null;
     if (!isInsideDisc(worldPoint)) return null;
 
-    const person = createPersonMesh(template);
+    const variant = pickSpawnVariant();
+    const person = createPersonMesh(variant);
     if (!person) return null;
 
-    placePersonOnFloor(person, worldPoint);
+    finalizePlacement(person, worldPoint);
     return registerPerson(person);
   }
 
@@ -55,6 +60,7 @@ export function createPeopleManager({
   }
 
   function removePerson(personGroup) {
+    personGroup.userData.mixer?.stopAllAction();
     gPeople.remove(personGroup);
     const idx = people.indexOf(personGroup);
     if (idx >= 0) people.splice(idx, 1);
@@ -76,13 +82,27 @@ export function createPeopleManager({
     return people.length;
   }
 
+  function updateAnimations(delta) {
+    for (const person of people) {
+      person.userData.mixer?.update(delta);
+    }
+  }
+
+  function refaceAllTowardCenter() {
+    const center = getCircleCenter();
+    for (const person of people) {
+      faceTowardCentralLight(person, center);
+    }
+  }
+
   return {
-    setTemplate,
     addPersonAtPoint,
     addRandomPerson,
     removePerson,
     clearAllPeople,
     setOccupancy,
     getPeopleCount,
+    updateAnimations,
+    refaceAllTowardCenter,
   };
 }

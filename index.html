@@ -6,22 +6,48 @@
   Legacy single-file CDN prototype migrated to src/main.js. Good for demos and
   design conversations; not yet production/asset-pipeline quality.
 
+  RENDERER: WebGL (Stage 1) — WebGPU deferred; decision, rationale, and re-evaluation
+  triggers documented in specs/002-light-realism-maze-fix/research.md (R1).
+
+  ARCHITECTURE NOTES (002-light-realism-maze-fix):
+  - Maze route: src/maze/route.js computes the walkable route as a pure function
+    (guard points, corridor clamping, dedupe, per-ring opening selection) and exposes
+    validateRoute(). The circulation path drawing and the walkthrough camera consume the
+    SAME computed route; "Generate new maze" retries up to 10× until validation passes.
+    Headless check: node scripts/verify-maze.mjs (needs dev server + playwright).
+  - Central light: src/lighting/centralLight.js owns the soft-edge beam shader, base-glow
+    sprite, and the scene's ONLY shadow-casting PointLight (physical decay=2, 1024px PCF
+    soft shadow map — keep it the only shadow caster, that's the perf budget).
+  - Rendering: every visible frame goes through renderFrame() in src/main.js, which runs
+    an EffectComposer (RenderPass → UnrealBloomPass → OutputPass) plus the CSS2D label
+    renderer. Video capture and Save-image read renderer.domElement, which the composer
+    writes into — any post-processing change must stay inside renderFrame().
+
   KNOWN LIMITATIONS, worth prioritizing first:
-  - People are 3D GLTF clones (Xbot low-poly humanoid). Further realism = better
-    assets, materials, and lighting (see constitution Future Direction — WebGL first).
-  - GIF recording depends on gif.js loaded from a CDN, plus a cross-origin Worker script
-    loaded via a fetch+Blob workaround (see getGifWorkerUrl()). This is the most fragile
-    piece in the file — needs network access and permissive CORS, no offline fallback beyond
-    the user-facing error message. Recording is now decoupled from camera mode (hooks into
-    the main render loop via captureGifFrame()), so it captures orbit/walk/central-orbit/plan
-    view equally — if you touch the render loop, keep that hook intact.
-  - Ring geometry, walkthrough route, and the maze generator are all fit/approximated from a
-    single cropped floor-plan image, not exact CAD coordinates — see comments near CURTAIN_R0
-    and doorPos for what's confirmed (Ø6.533m ring, Ø1.541m center marker) vs. estimated
-    (room taper direction, door position, ceiling height).
+  - People are Mixamo characters (Sophie, Kate, Megan, Elizabeth, Jody, Martha) with
+    Breathing Idle; run `npm run import:mixamo` to fetch/optimize GLBs.
+  - Video recording uses the browser-native MediaRecorder (no CDN, replaced the old gif.js
+    pipeline): frames are drawn into a 1080p-tall offscreen canvas whose captureStream feeds
+    the recorder — output is MP4 where supported (Safari, newer Chromium), WebM elsewhere.
+    Recording is decoupled from camera mode (hooks into the main render loop via
+    captureVideoFrame()), so it captures orbit/walk/central-orbit/plan view equally — if you
+    touch the render loop, keep that hook intact.
+  - Room + ring geometry from public/floorplan2.svg (labeled scale ≈29.93 u/m): room
+    10.12 × 22.34 m (≈226 m²). The innermost circle is the PROJECTION SCREEN (Ø4.800 outer /
+    Ø4.695 face, two arcs) — not a curtain. Curtain ring 1 is the confirmed Ø6.533 m. Screen
+    has its own layer, selection study (arc lengths, area, curvature, one-vs-two projectors →
+    two blended), and two projector models + blend band. Technical/ventilation layer (vector
+    niches, ducts, booth, entrance) toggles in 3D and the X-panel. Press X for the live metre
+    floorplan (floorplan2 underlay, gold screen arcs, red curtains). Raster MEP images
+    content-*.png are not bundled. Ceiling height remains an estimate.
+  - ANGLE CONVENTION GOTCHA (this was a real, shipped misalignment bug): three.js
+    CylinderGeometry measures thetaStart from +Z sweeping clockwise in plan (x=r·sinθ,
+    z=r·cosθ), while all plan math here uses world angles from +X (x=r·cosα, z=r·sinα).
+    World arc [a, a+len] must be built as cylinder sweep [π/2−(a+len), len] — see buildRings
+    and the screen's rotation.y compensation. Any new arc geometry must convert the same way.
   - Performance: with many rings + heatmap + circulation all visible, object count climbs
-    fast (each ring is several meshes: fabric arcs, edge lines, dashed aperture markers, gate
-    posts). Already trimmed segment counts once for this reason (see CylinderGeometry args).
+    fast (each ring is several meshes: fabric arcs + edge lines).
+    Already trimmed segment counts once for this reason (see CylinderGeometry args).
     If you add more visual layers, watch total scene object count — WebGL has to depth-sort
     every transparent/additive object every frame, and that cost was the direct cause of a
     "stuck-feeling" orbit control earlier in this file's history.
@@ -41,9 +67,10 @@
   - Split this single file into modules: scene/room setup, ring generation, camera/walk
     controller, UI panel — it's grown well past what one inline script should hold.
   - Push visual quality further while staying in Three.js before considering WebGPU/Unreal:
-    an HDRI environment map, real shadow maps, and an EffectComposer bloom pass on the pulsing
-    light are all low-risk, well-supported upgrades. WebGPU browser support (esp. Safari) is
-    still inconsistent enough to be a real risk for a shareable demo link; Unreal/Unity are
+    shadow maps and EffectComposer bloom are DONE (see architecture notes above); an HDRI
+    environment map and PBR curtain textures are the remaining low-risk upgrades. WebGPU
+    browser support (esp. Safari) is still inconsistent enough to be a real risk for a
+    shareable demo link — see research.md R1 for the re-evaluation triggers; Unreal/Unity are
     the right call only if genuine cloth simulation on the curtains becomes a real requirement.
   - If you have real photos of the physical materials (curtain fabric, floor, the red light in
     situ), pull accurate colors and, ideally, texture maps from them — this is probably the
@@ -63,81 +90,113 @@
 
 <div class="hud" id="title">
   <h1>CORTEX — MadArts, Exhibit #16</h1>
-  <p>click central floor to add a person · click a dot to remove it</p>
+  <p>click the central floor to add a person · click a person to remove them</p>
 </div>
 
 <img class="hud" id="logo" src="data:image/png;base64,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" alt="HANA">
 
 <div class="hud interactive" id="legend">
-  <h2>Layers</h2>
-  <label class="row"><input type="checkbox" checked data-layer="room"><span class="swatch" style="background:#3a4048"></span>Room shell</label>
-  <label class="row"><input type="checkbox" checked data-layer="floor"><span class="swatch" style="background:#c0392b"></span>Central floor (Ø4.8m)</label>
-  <label class="row"><input type="checkbox" checked data-layer="curtain"><span class="swatch" style="background:#ffffff"></span>Curtain rings</label>
-  <label class="row"><input type="checkbox" data-layer="circulation"><span class="swatch" style="background:#5be089"></span>Circulation</label>
-  <div class="btnrow" style="margin:-4px 0 8px 20px;">
-    <button class="smallbtn active" id="circPath">Path</button>
-    <button class="smallbtn" id="circHeat">Heatmap</button>
-  </div>
-  <label class="row"><input type="checkbox" checked data-layer="screen"><span class="swatch" style="background:#e0c341"></span>Projection screen</label>
-  <label class="row"><input type="checkbox" checked data-layer="rig"><span class="swatch" style="background:#ff3b30"></span>Sensor + DMX light</label>
-  <label class="row"><input type="checkbox" checked data-layer="box"><span class="swatch" style="background:#9b59b6"></span>Background light box</label>
-  <label class="row"><input type="checkbox" checked data-layer="fixtures"><span class="swatch" style="background:#ff4d4d"></span>Sprinklers / exit</label>
-  <label class="row"><input type="checkbox" data-layer="grid"><span class="swatch" style="background:#555b64"></span>1m reference grid</label>
-  <label class="row"><input type="checkbox" checked data-layer="ceilingLights"><span class="swatch" style="background:#ffd23f"></span>Ceiling lights</label>
-  <div class="btnrow" style="margin:-4px 0 8px 20px;"><button class="smallbtn" id="ceilingModeBtn">Add ceiling light</button></div>
-  <label class="row"><input type="checkbox" id="clipToggle"><span class="swatch" style="background:#e7e9ec"></span>Cut to room bounds</label>
+  <details class="section" open>
+    <summary>People in central space</summary>
+    <div class="numrow"><span>Occupancy</span><span id="occReadout">0</span></div>
+    <div class="numrow"><span>Set to</span><input type="number" id="occTarget" step="1" min="0" max="60" value="10"></div>
+    <div class="btnrow">
+      <button class="smallbtn" id="setOccupancy">Set occupancy</button>
+      <button class="smallbtn" id="clearPeople">Clear all</button>
+    </div>
+    <label class="row"><input type="checkbox" id="showNames">Show name labels</label>
+  </details>
 
-  <h2>People in central space</h2>
-  <div class="numrow"><span>Occupancy</span><span id="occReadout">0</span></div>
-  <div class="numrow"><span>Set to</span><input type="number" id="occTarget" step="1" min="0" max="60" value="10"></div>
-  <div class="btnrow">
-    <button class="smallbtn" id="setOccupancy">Set occupancy</button>
-    <button class="smallbtn" id="clearPeople">Clear all</button>
-  </div>
+  <details class="section" open>
+    <summary id="selTitle">Selected: none</summary>
+    <div id="selpanel"></div>
+  </details>
 
-  <h2 id="selTitle">Selected: none</h2>
-  <div id="selpanel"></div>
+  <details class="section" open>
+    <summary>Layers</summary>
+    <div id="layersPanelRoot"></div>
+    <label class="row"><input type="checkbox" id="clipToggle"><span class="swatch" style="background:#e7e9ec"></span>Cut to room bounds</label>
+  </details>
 
-  <h2>Space door / entrance</h2>
-  <div class="numrow"><span>Door X (m)</span><input type="number" id="doorX" step="0.1" value="3.5"></div>
-  <div class="numrow"><span>Door Z (m)</span><input type="number" id="doorZ" step="0.1" value="20.4"></div>
-  <div class="btnrow">
-    <button class="smallbtn" id="autoOrient">Auto-orient openings to door</button>
-    <button class="smallbtn" id="genMaze">Generate new maze &amp; walk it</button>
-  </div>
+  <details class="section" open>
+    <summary>Heatmap</summary>
+    <div id="heatmapControlsRoot"></div>
+  </details>
 
-  <h2>Central space position</h2>
-  <div class="numrow"><span>Offset X (m)</span><input type="number" id="offX" step="0.1" value="-0.9"></div>
-  <div class="numrow"><span>Offset Z (m)</span><input type="number" id="offZ" step="0.1" value="5.0"></div>
+  <details class="section" open>
+    <summary>Lighting</summary>
+    <div id="lightingControlsRoot"></div>
+  </details>
 
-  <h2>Background light box</h2>
-  <div class="numrow"><span>Along wall (m)</span><input type="number" id="boxX" step="0.1" value="2.34"></div>
-  <div class="numrow"><span>Height (m)</span><input type="number" id="boxY" step="0.1" value="1.2"></div>
+  <details class="section">
+    <summary>Screen content</summary>
+    <div id="screenMediaRoot"></div>
+  </details>
 
-  <h2>Ring spacing</h2>
-  <div class="numrow"><span>Growth /ring (×)</span><input type="number" id="growth" step="0.01" min="1" max="2" value="1.23"></div>
-  <div class="numrow"><span>Ring1→2 gap (m)</span><span id="gapPreview" style="color:var(--ink)">0.18</span></div>
-  <div class="numrow"><span>Opening width (m)</span><input type="number" id="gapWidth" step="0.1" min="0.5" max="3" value="1.2"></div>
-  <div class="btnrow"><button class="smallbtn" id="extendFar">Extend to far wall</button></div>
+  <details class="section">
+    <summary>Space door / entrance</summary>
+    <div class="numrow"><span>Door X (m)</span><input type="number" id="doorX" step="0.1" value="3.8"></div>
+    <div class="numrow"><span>Door Z (m)</span><input type="number" id="doorZ" step="0.1" value="22.34"></div>
+    <div class="btnrow">
+      <button class="smallbtn" id="autoOrient">Auto-orient openings to door</button>
+      <button class="smallbtn" id="genMaze">Generate new maze &amp; walk it</button>
+    </div>
+  </details>
 
-  <h2>Openings per ring</h2>
-  <div class="numrow"><span>Count</span><input type="number" id="openPerRing" step="1" min="1" max="6" value="1"></div>
-  <div class="numrow"><span>Spacing (°)</span><input type="number" id="openSpacing" step="1" min="5" max="180" value="40"></div>
+  <details class="section">
+    <summary>Central space position</summary>
+    <div class="numrow"><span>Offset X (m)</span><input type="number" id="offX" step="0.1" value="0.08"></div>
+    <div class="numrow"><span>Offset Z (m)</span><input type="number" id="offZ" step="0.1" value="6.69"></div>
+  </details>
 
-  <h2>Rings (° = primary opening angle, * = confirmed dia.)</h2>
-  <div id="ringControls"></div>
-  <div class="btnrow">
-    <button class="smallbtn" id="addRing">+ Add ring</button>
-    <button class="smallbtn" id="removeRing">− Remove last</button>
-  </div>
+  <details class="section">
+    <summary>Background light box</summary>
+    <div class="numrow"><span>Along wall (m)</span><input type="number" id="boxX" step="0.1" value="4.48"></div>
+    <div class="numrow"><span>Height (m)</span><input type="number" id="boxY" step="0.1" value="1.2"></div>
+  </details>
+
+  <details class="section">
+    <summary>Ring spacing</summary>
+    <div class="numrow"><span>Growth /ring (×)</span><input type="number" id="growth" step="0.01" min="1" max="2" value="1.23"></div>
+    <div class="numrow"><span>Ring1→2 gap (m)</span><span id="gapPreview" style="color:var(--ink)">0.18</span></div>
+    <div class="numrow"><span>Opening width (m)</span><input type="number" id="gapWidth" step="0.1" min="0.5" max="3" value="2.0"></div>
+    <div class="btnrow"><button class="smallbtn" id="extendFar">Extend to far wall</button></div>
+  </details>
+
+  <details class="section">
+    <summary>Doors (all rings)</summary>
+    <div class="numrow"><span>Count — sets every ring</span><input type="number" id="openPerRing" step="1" min="1" max="6" value="1"></div>
+    <div class="numrow"><span>Spacing (°)</span><input type="number" id="openSpacing" step="1" min="5" max="180" value="40"></div>
+  </details>
+
+  <details class="section">
+    <summary>Rings</summary>
+    <div class="sectionhint">slider rotates the whole ring · * = confirmed dia. · per-ring: entrance count, each entrance angle (@), and curtain trim start–end (auto = fit to walls)</div>
+    <div id="ringControls"></div>
+    <div class="btnrow">
+      <button class="smallbtn" id="addRing">+ Add ring</button>
+      <button class="smallbtn" id="removeRing">− Remove last</button>
+    </div>
+  </details>
 </div>
 
 <div class="hud" id="dims">
-  <div><span class="k">Room:</span> <span class="v">265.7 m²</span></div>
-  <div><span class="k">Width:</span> <span class="v">8.5 → 13.4 m</span></div>
-  <div><span class="k">Depth:</span> <span class="v">21.9 m</span></div>
-  <div><span class="k">Central floor:</span> <span class="v">Ø 4.8 m</span></div>
-  <div><span class="k">Rings:</span> <span class="v" id="ringCount">16</span></div>
+  <div><span class="k">Room:</span> <span class="v">≈ 226 m² (from plan)</span></div>
+  <div><span class="k">Width:</span> <span class="v">10.12 m</span></div>
+  <div><span class="k">Depth:</span> <span class="v">22.34 m</span></div>
+  <div><span class="k">Screen:</span> <span class="v">Ø 4.80 m (face 4.695)</span></div>
+  <div><span class="k">Curtain ring 1:</span> <span class="v">Ø 6.533 m</span></div>
+  <div><span class="k">Rings:</span> <span class="v" id="ringCount">10</span></div>
+</div>
+
+<div class="hud interactive" id="floorplanPanel">
+  <div class="fpTitle">Live floorplan — <span style="color:#c0392b">red</span> = curtains · <span style="color:#b8860b">gold</span> = screen · <span style="color:#1f9d55">green</span> = doors · <span style="color:#ff3b30">red disc</span> = central beam (dashed = pulse extent) · click ring/screen to edit · press <b>X</b> to close</div>
+  <div class="fpBar">
+    <label><input type="checkbox" id="fpUnderlayToggle" checked> architect drawing underlay</label>
+    <button class="smallbtn" id="fpDownload">Download SVG</button>
+  </div>
+  <div class="fpCanvas" id="fpCanvas"></div>
+  <div class="fpDims" id="fpDims"></div>
 </div>
 
 <div class="hud interactive" id="viewbtns">
@@ -145,17 +204,17 @@
   <button id="btnPlan">Plan view</button>
   <button id="btnWalk">Walk through (POV)</button>
   <button id="btnCentral">Central space</button>
+  <button id="btnLineView">Line drawing</button>
   <button id="btnSave">Save image</button>
-  <button id="btnGif">Record GIF</button>
+  <button id="btnVideo">Record video</button>
 </div>
 
 <div class="hud" id="controls">
-  <b>Drag</b> orbit · <b>scroll</b> zoom · <b>shift+drag</b> pan · <b>click</b> to select / add / remove
+  <b>Drag</b> orbit · <b>scroll</b> zoom · <b>shift+drag</b> pan · <b>click</b> to select / add / remove · <b>X</b> technical drawing
 </div>
 
 <div id="tooltip"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
 <script type="module" src="/src/main.js"></script>
 </body>
 </html>

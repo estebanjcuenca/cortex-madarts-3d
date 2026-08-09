@@ -1,14 +1,19 @@
-# humanoid-lowpoly.glb
+# Mixamo people models
 
-Low-poly rigged humanoid used for occupancy figures in the CORTEX central space.
+Characters: **Sophie, Kate, Megan, Elizabeth, Jody, Martha** (Adobe Mixamo).
 
-| Field | Value |
-|-------|-------|
-| **Source** | [Three.js examples — Xbot.glb](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf) |
-| **Original name** | Xbot.glb (renamed for this project) |
-| **License** | [MIT License](https://github.com/mrdoob/three.js/blob/dev/LICENSE) (Three.js repository examples) |
-| **Format** | GLB 2.0, rigged mesh |
-| **File size** | ~2.9 MB |
-| **Usage** | Loaded once via `GLTFLoader`, cloned per person with scale randomization |
+| File | Character |
+|------|-----------|
+| `sophie.glb` | Sophie |
+| `kate.glb` | Kate |
+| `megan.glb` | Megan |
+| `elizabeth.glb` | Elizabeth |
+| `jody.glb` | Jody |
+| `martha.glb` | Martha |
 
-Replace with a CC0 Quaternius/KayKit pack if a smaller asset is preferred.
+Shared idle clip: `../mixamo-idle.glb` (Breathing Idle).
+
+Re-import: `npm run import:mixamo`
+
+- **License:** [Mixamo / Adobe Terms](https://www.adobe.com/legal/terms.html) — embed in project only.
+- **Sources:** [GbotHQ/mixamo-characters](https://huggingface.co/datasets/GbotHQ/mixamo-characters) (FBX), Breathing Idle (Mixamo).
