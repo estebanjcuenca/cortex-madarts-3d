@@ -10,7 +10,10 @@
 const S = 29.928;
 
 export const FLOORPLAN_SVG = {
-  url: '/floorplan2.svg',
+  // Relative, not root-absolute: the published site lives under a project subpath, where
+  // "/floorplan2.svg" resolves to the host root and 404s. Left as a plain string rather
+  // than going through import.meta.env so this module still imports in Node.
+  url: 'floorplan2.svg',
   unitsPerMeter: S,
   // Ring-field center (fabric arcs). Screen has its own center — see SCREEN.
   center: { x: 260.09, y: 313.87 },
