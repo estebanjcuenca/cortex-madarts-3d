@@ -122,7 +122,7 @@ No source file over **400 lines**, exemptions recorded here with a reason.
 
 | File | Lines | Exemption reason |
 |---|---|---|
-| `src/main.js` | 2084 | Being dismantled by feature 005; target is under 200 by task T070 |
+| `src/main.js` | 2267 | Being dismantled by feature 005; target is under 200 by task T070 |
 | `src/maze/flowRoutes.js` | 513 | Pure graph enumeration, no natural seam; revisit at task T071 |
 
 Check current state:

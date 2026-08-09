@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createCentralLightRig } from './centralLight.js';
-import { emitsLight, sanitizeParams } from './fixtureTypes.js';
+import { emitsLight, hasHousing, sanitizeParams } from './fixtureTypes.js';
 
 /**
  * Builds and updates the Three.js objects that represent a `Fixture` record.
@@ -15,7 +15,7 @@ import { emitsLight, sanitizeParams } from './fixtureTypes.js';
 const BODY_SIZE = { w: 0.45, h: 0.12, d: 0.45 };
 const CONE_RADIUS = 0.7;
 const CONE_FLOOR_GAP = 0.5; // cone stops short of the floor
-const LIGHT_DROP = 0.1;     // light sits just below the body so it is not occluded by it
+const LIGHT_DROP = 0.1;     // housed lights sit just below the body so it does not occlude them
 
 function makeBody() {
   return new THREE.Mesh(
@@ -63,6 +63,7 @@ function makeLight(fixture, params) {
     case 'wash':
       return new THREE.PointLight(fixture.color, fixture.intensity, params.distance, params.decay);
     case 'spot':
+    case 'panel':
       return new THREE.SpotLight(
         fixture.color, fixture.intensity, params.distance,
         THREE.MathUtils.degToRad(params.angleDeg), params.penumbra, params.decay,
@@ -78,8 +79,8 @@ function applyLight(light, fixture, params) {
   if (light.isAmbientLight) return;
 
   light.position.set(fixture.position.x, fixture.position.y, fixture.position.z);
+  if (hasHousing(fixture.type)) light.position.y -= LIGHT_DROP;
   if (light.isPointLight || light.isSpotLight) {
-    light.position.y -= LIGHT_DROP;
     light.distance = params.distance;
     light.decay = params.decay;
   }
@@ -156,13 +157,15 @@ export function createFixtureObjects(ctx, fixture) {
   let target = null;
   if (light.isSpotLight || light.isDirectionalLight) {
     target = new THREE.Object3D();
+    // Seed the aim from the record: without this an aimable fixture points at the world
+    // origin until something happens to call update() on it.
+    if (fixture.aim) target.position.set(fixture.aim.x, fixture.aim.y, fixture.aim.z);
     parent.add(target);
     light.target = target;
     objects.push(target);
   }
 
-  // A `wash` is an invisible spill; a `point` or `spot` is a physical fixture with a housing.
-  const wantsBody = type === 'point' || type === 'spot';
+  const wantsBody = hasHousing(type);
   let body = null;
   let cone = null;
   if (wantsBody) {

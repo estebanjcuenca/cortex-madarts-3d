@@ -173,7 +173,8 @@ R3) but the record shape accommodates it without restructuring.
 | `point` | `{ distance, decay }` | yes | ceiling fixtures `0xffe9a8 @ 1.4, d=8` |
 | `spot` | `{ distance, decay, angleDeg, penumbra }` | yes | **new** — no `SpotLight` exists today |
 | `centralBeam` | `{ beamScale, glowScale, pulseAmount, height }` | yes | `centralLight.js` rig |
-| `wash` | `{ distance, decay }` | no | screen spill `0x3f5fd6 @ 2.2`, box spill `0xff2418 @ 3.0` |
+| `wash` | `{ distance, decay }` | no | screen spill `0x3f5fd6 @ 2.2` |
+| `panel` | `{ distance, decay, angleDeg, penumbra }` | yes | background light box `0xff2418 @ 3.0` — a flat emitter: a `spot` with no housing of its own, the way a `wash` is a `point` with none |
 | `projector` | `{ throwAngleDeg, targetArcDeg }` | no | throw cones — visual only, no illumination |
 
 **Constraint (FR-008)**: the shadow budget is counted in **render passes, not in fixtures**. A
@@ -196,7 +197,7 @@ Derived from the current scene, so the tool opens with everything already addres
 | `rim` | Rim light | `directional` | installation |
 | `central` | Central beam | `centralBeam` | installation |
 | `screenSpill` | Screen wash | `wash` | installation |
-| `boxSpill` | Background box wash | `wash` | installation |
+| `boxSpill` | Background box light | `panel` | installation |
 | `projectorA` / `projectorB` | Projector 1 / 2 | `projector` | installation |
 | `ceiling-*` | Ceiling fixture *n* | `point` | user |
 

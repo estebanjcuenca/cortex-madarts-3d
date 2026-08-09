@@ -115,7 +115,7 @@ export function createLightingRig(ctx) {
   /** The record as the scene should render it — mood applied, record left untouched. */
   function withMood(fixture) {
     const lit = fixture.type === 'ambient' || fixture.type === 'directional'
-      || fixture.type === 'wash';
+      || fixture.type === 'wash' || fixture.type === 'panel';
     if (!lit || mood.exposure === 1) return fixture;
     return { ...fixture, intensity: fixture.intensity * mood.exposure };
   }

@@ -238,8 +238,38 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   }
 
   let circleCenter = new THREE.Vector3(CENTER_M.x, 0, CENTER_M.z);
-  let boxPos = {x:BOX_X_M, y:1.2};
   let doorPos = {x:DOOR_M.x, z:DOOR_M.z};
+
+  /**
+   * The background light box is freely placed: position, orientation and size are all
+   * editable, because where it stands and which way it faces is the whole point of it.
+   * Yaw 0° faces +z (down the room, away from the booth wall); the default sits it on the
+   * far wall facing back toward the central space.
+   */
+  const BOX_WALL_STANDOFF_M = 1.4;   // distance from the wall it stands against
+  const BOX_FACE_GAP_M = 0.02;       // the emitter sits just clear of the lit face, not inside it
+  const boxDefaults = {
+    x: BOX_X_M, y: 1.2, z: ROOM_M.depth - BOX_WALL_STANDOFF_M,
+    yaw: 180, pitch: 0, roll: 0,
+    width: 0.6, height: 2.4, depth: 0.35,
+    // What the box throws into the room, straight out of its lit face.
+    intensity: 3, spread: 60, softness: 0.85, reach: 14, falloff: 2,
+  };
+  let box = { ...boxDefaults };
+
+  // The autosave record is read once, here, because the placement it holds has to seed the
+  // first build rather than move things afterwards — the background light box carries a
+  // real light, so restoring it late would rebuild the rig for nothing. Mood, fixtures and
+  // screen media restore later, in restoreWorkingState().
+  const savedState = restoreAutosave()?.state ?? null;
+  if(savedState?.placement){
+    const p = savedState.placement;
+    if(p.center) circleCenter.set(p.center.x, 0, p.center.z);
+    // Merged rather than replaced: records written before the box gained orientation and
+    // size carry only x and y, and those should keep their saved position.
+    if(p.box) box = { ...box, ...p.box };
+    if(p.door) doorPos = {x:p.door.x, z:p.door.z};
+  }
 
   const nearHalf = W_NEAR/2, farHalf = W_FAR/2;
   const corners = [
@@ -806,28 +836,73 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
   const BOX_FACE_COLOR_HEX = '#ff2418';
 
+  /** Unit vector the lit face points along, from the box's yaw. */
+  function boxFacing(){
+    const y = deg2rad(box.yaw);
+    return { x: Math.sin(y), z: Math.cos(y) };
+  }
+
+  /** The light's own settings, kept in one place so the record can never drift from `box`. */
+  function boxSpillPatch(){
+    return {
+      intensity: box.intensity,
+      params: {
+        distance: box.reach, decay: box.falloff,
+        angleDeg: box.spread, penumbra: box.softness,
+      },
+    };
+  }
+
   function buildBox(){
     gBox.clear();
     picks.unregisterGroup('box');
-    const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(0.6,2.4,0.35), new THREE.MeshStandardMaterial({color:0x9b59b6, emissive:0x3a1f45, roughness:0.5}));
-    boxMesh.position.set(boxPos.x, boxPos.y, 1.4);
-    boxMesh.userData = {kind:'box', index:0, info:'Background lighting box'};
-    gBox.add(boxMesh);
+
+    // Housing, lit face and wash all hang off one transformed group, so the face and the
+    // light are positioned in the box's own space and inherit whatever orientation it has
+    // — otherwise every rotation would need the offsets recomputed by hand.
+    const rig = new THREE.Group();
+    rig.position.set(box.x, box.y, box.z);
+    rig.rotation.set(deg2rad(box.pitch), deg2rad(box.yaw), deg2rad(box.roll), 'YXZ');
+
+    const boxMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(box.width, box.height, box.depth),
+      new THREE.MeshStandardMaterial({color:0x9b59b6, emissive:0x3a1f45, roughness:0.5}),
+    );
+    boxMesh.userData = {kind:'box', index:0,
+      info:`Background lighting box — ${box.width.toFixed(2)} × ${box.height.toFixed(2)} × ${box.depth.toFixed(2)} m, facing ${Math.round(box.yaw)}°`};
+    rig.add(boxMesh);
     picks.register(boxMesh);
 
-    // Red-lit front face (facing into the room, +z) plus a red spill light from it.
+    // Red-lit front face on the box's +z side, plus a red spill light in front of it.
     // No shadows — the central light remains the scene's only shadow caster.
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 2.34), new THREE.MeshBasicMaterial({color:BOX_FACE_COLOR_HEX}));
-    face.position.set(boxPos.x, boxPos.y, 1.4 + 0.35/2 + 0.005);
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry(Math.max(0.02, box.width-0.04), Math.max(0.02, box.height-0.06)),
+      new THREE.MeshBasicMaterial({color:BOX_FACE_COLOR_HEX}),
+    );
+    face.position.set(0, 0, box.depth/2 + 0.005);
     // The face is the box's whole point, so the drawing keeps its colour instead of
     // flattening it to a white outline like the housing around it.
     face.userData.lineViewSymbol = { kind: 'accent', color: BOX_FACE_COLOR_HEX };
-    gBox.add(face);
-    const spillPos = { x: boxPos.x, y: boxPos.y, z: 1.4 + 0.6 };
-    if(lighting.get('boxSpill')) lighting.rebuild('boxSpill', { position: spillPos });
-    else lighting.add({ id:'boxSpill', name:'Background box wash', type:'wash',
-      origin:'installation', color:BOX_FACE_COLOR_HEX, intensity:3.0,
-      params:{ distance:8, decay:2 }, position: spillPos });
+    rig.add(face);
+    gBox.add(rig);
+
+    // The light is a rig fixture parented to gBox rather than to the box, so it takes world
+    // coordinates. Both the emitter and the point it aims at are local offsets along the
+    // face normal put through the box's matrix, which is what makes the throw follow yaw,
+    // pitch and roll without any of it being recomputed by hand.
+    gBox.updateMatrixWorld(true);
+    const onFaceAxis = (d) => {
+      const p = new THREE.Vector3(0, 0, box.depth/2 + d).applyMatrix4(rig.matrixWorld);
+      return { x: p.x, y: p.y, z: p.z };
+    };
+    const patch = {
+      position: onFaceAxis(BOX_FACE_GAP_M),
+      aim: onFaceAxis(BOX_FACE_GAP_M + 1),
+      ...boxSpillPatch(),
+    };
+    if(lighting.get('boxSpill')) lighting.rebuild('boxSpill', patch);
+    else lighting.add({ id:'boxSpill', name:'Background box light', type:'panel',
+      origin:'installation', color:BOX_FACE_COLOR_HEX, ...patch });
   }
 
   const sprinklerMat = new THREE.MeshStandardMaterial({color:0xff4d4d, emissive:0x660000});
@@ -1133,7 +1208,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   // Everything the user tunes is restored before autosave starts listening, so replaying
   // the saved state cannot be mistaken for fresh edits.
   async function restoreWorkingState(){
-    const saved = restoreAutosave();
+    const saved = savedState ? { state: savedState } : null;
     if(saved){
       const { state } = saved;
       if(state.mood) setVisualSettings(state.mood);
@@ -1163,6 +1238,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
         return {
           mood: getVisualSettings(),
           fixtures: lighting.list().filter(f=>f.origin === 'user'),
+          // Placement moves lights, not just geometry: the background box carries the red
+          // boxSpill wash, and the central offset carries the whole rig.
+          placement: {
+            center: { x:+circleCenter.x.toFixed(3), z:+circleCenter.z.toFixed(3) },
+            box: { ...box },
+            door: { ...doorPos },
+          },
           // The File itself lives in IndexedDB; only its descriptor belongs in JSON.
           screen: {
             mirrored: screenMedia.isMirrored(),
@@ -1233,6 +1315,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     if(e.key === 'ArrowRight') setFlowRouteIndex(flowRouteIndex + 1);
   });
 
+  // These three fields already hold the restored placement (seeded above), so the inputs
+  // are synced from the model rather than the other way round; the markup values are only
+  // the floorplan defaults.
   const offX = document.getElementById('offX'), offZ = document.getElementById('offZ');
   function applyOffset(){
     circleCenter = new THREE.Vector3(parseFloat(offX.value)||0, 0, parseFloat(offZ.value)||0);
@@ -1242,22 +1327,72 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     buildRig();
     rebuildRingSliders();
     peopleManager.refaceAllTowardCenter();
+    autosave?.schedule();
   }
+  offX.value = circleCenter.x; offZ.value = circleCenter.z;
   offX.addEventListener('input', applyOffset);
   offZ.addEventListener('input', applyOffset);
 
-  const boxXInp = document.getElementById('boxX'), boxYInp = document.getElementById('boxY');
-  function applyBoxPos(){
-    boxPos = {x:parseFloat(boxXInp.value)||0, y:parseFloat(boxYInp.value)||0};
+  const boxEls = Object.fromEntries(Object.entries({
+    x:'boxX', y:'boxY', z:'boxZ', yaw:'boxYaw', pitch:'boxPitch', roll:'boxRoll',
+    width:'boxW', height:'boxH', depth:'boxD',
+    intensity:'boxIntensity', spread:'boxSpread', softness:'boxSoftness',
+    reach:'boxReach', falloff:'boxFalloff',
+  }).map(([key, id])=>[key, document.getElementById(id)]));
+  const BOX_MIN_SIZE_M = 0.05;   // a zero-thickness housing has no face left to light
+  const BOX_LIGHT_KEYS = ['intensity','spread','softness','reach','falloff'];
+
+  function readBoxInputs(){
+    for(const key in boxEls) box[key] = parseFloat(boxEls[key].value)||0;
+    for(const key of ['width','height','depth']) box[key] = Math.max(BOX_MIN_SIZE_M, box[key]);
+  }
+  function syncBoxInputs(){
+    for(const key in boxEls) boxEls[key].value = box[key];
+  }
+  /** Where it stands and how big it is — the geometry has to be rebuilt. */
+  function applyBoxShape(){
+    readBoxInputs();
     buildBox();
     updateFloorplanOverlay();
+    autosave?.schedule();
   }
-  boxXInp.addEventListener('input', applyBoxPos);
-  boxYInp.addEventListener('input', applyBoxPos);
+  /**
+   * What it throws into the room. update() rather than rebuild(): these are slider drags,
+   * and rebuilding would discard and recreate the light on every frame of the drag.
+   */
+  function applyBoxLight(){
+    readBoxInputs();
+    lighting.update('boxSpill', boxSpillPatch());
+    autosave?.schedule();
+  }
+  syncBoxInputs();
+  for(const [key, el] of Object.entries(boxEls)){
+    el.addEventListener('input', BOX_LIGHT_KEYS.includes(key) ? applyBoxLight : applyBoxShape);
+  }
+
+  document.getElementById('boxFaceCenter').addEventListener('click', ()=>{
+    // Yaw is measured from +z, so the aim angle is atan2(dx, dz), not the usual atan2(dz, dx).
+    box.yaw = +(Math.atan2(circleCenter.x - box.x, circleCenter.z - box.z) * 180/Math.PI).toFixed(1);
+    syncBoxInputs();
+    applyBoxShape();
+  });
+  document.getElementById('boxReset').addEventListener('click', ()=>{
+    box = { ...boxDefaults };
+    syncBoxInputs();
+    applyBoxShape();   // rebuilding the box re-applies the wash settings with it
+  });
 
   const doorXInp = document.getElementById('doorX'), doorZInp = document.getElementById('doorZ');
-  doorXInp.addEventListener('input', ()=>{ doorPos.x = parseFloat(doorXInp.value)||0; markFlowDirty(); updateFloorplanOverlay(); buildCirculation(); });
-  doorZInp.addEventListener('input', ()=>{ doorPos.z = parseFloat(doorZInp.value)||0; markFlowDirty(); updateFloorplanOverlay(); buildCirculation(); });
+  function applyDoorPos(){
+    doorPos = {x:parseFloat(doorXInp.value)||0, z:parseFloat(doorZInp.value)||0};
+    markFlowDirty();
+    updateFloorplanOverlay();
+    buildCirculation();
+    autosave?.schedule();
+  }
+  doorXInp.value = doorPos.x; doorZInp.value = doorPos.z;
+  doorXInp.addEventListener('input', applyDoorPos);
+  doorZInp.addEventListener('input', applyDoorPos);
 
   document.getElementById('autoOrient').addEventListener('click', ()=>{
     // Point the outermost ring's opening toward the door, but only ever pick an angle
@@ -2071,7 +2206,23 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     fpOverlay.appendChild(fpMk('circle', {cx, cy, r:CENTER_MARKER_D/2, fill:'none', stroke:'#d9a441', 'stroke-width':'0.04', 'stroke-dasharray':'0.08 0.08'}));
     fpOverlay.appendChild(fpMk('path', {d:`M${(cx-0.35).toFixed(2)} ${cy.toFixed(2)}L${(cx+0.35).toFixed(2)} ${cy.toFixed(2)}M${cx.toFixed(2)} ${(cy-0.35).toFixed(2)}L${cx.toFixed(2)} ${(cy+0.35).toFixed(2)}`, stroke:'#c0392b', 'stroke-width':'0.04', fill:'none'}));
     fpOverlay.appendChild(fpMk('circle', {cx:doorPos.x, cy:doorPos.z, r:0.35, fill:'none', stroke:'#2563eb', 'stroke-width':'0.07'}));
-    fpOverlay.appendChild(fpMk('rect', {x:(boxPos.x-0.3).toFixed(2), y:(1.4-0.175).toFixed(2), width:0.6, height:0.35, fill:'none', stroke:'#9b59b6', 'stroke-width':'0.06'}));
+    // Box housing, rotated about its own centre. SVG y grows downward where plan z does,
+    // so a positive yaw reads as a negative SVG rotation.
+    fpOverlay.appendChild(fpMk('rect', {
+      x:(box.x - box.width/2).toFixed(2), y:(box.z - box.depth/2).toFixed(2),
+      width:box.width.toFixed(2), height:box.depth.toFixed(2),
+      fill:'none', stroke:'#9b59b6', 'stroke-width':'0.06',
+      transform:`rotate(${(-box.yaw).toFixed(1)} ${box.x.toFixed(2)} ${box.z.toFixed(2)})`,
+    }));
+    // The lit face, in red, so the drawing says which way the box is pointing.
+    const bf = boxFacing();
+    const bfc = { x: box.x + bf.x*box.depth/2, z: box.z + bf.z*box.depth/2 };
+    const bfr = { x: bf.z, z: -bf.x };   // along the face, perpendicular to the facing
+    fpOverlay.appendChild(fpMk('line', {
+      x1:(bfc.x - bfr.x*box.width/2).toFixed(2), y1:(bfc.z - bfr.z*box.width/2).toFixed(2),
+      x2:(bfc.x + bfr.x*box.width/2).toFixed(2), y2:(bfc.z + bfr.z*box.width/2).toFixed(2),
+      stroke:BOX_FACE_COLOR_HEX, 'stroke-width':'0.1',
+    }));
     const dims = document.getElementById('fpDims');
     if(dims){
       dims.textContent =

@@ -55,6 +55,7 @@ export const FIXTURE_TYPES = {
     label: 'Point',
     omnidirectional: true,
     aimable: false,
+    housing: true,
     shadowPassCost: SHADOW_PASS_COST.cube,
     defaults: { color: '#ffe9a8', intensity: 1.4, params: { distance: 8, decay: 2 } },
     params: [
@@ -68,6 +69,7 @@ export const FIXTURE_TYPES = {
     label: 'Spot',
     omnidirectional: false,
     aimable: true,
+    housing: true,
     shadowPassCost: SHADOW_PASS_COST.perspective,
     defaults: {
       color: '#ffe9a8',
@@ -113,6 +115,31 @@ export const FIXTURE_TYPES = {
     params: [
       num('distance', 'Reach', 6, 0, 40, 0.1, 'm'),
       num('decay', 'Falloff', 2, 0, 4, 0.1),
+    ],
+  },
+
+  /**
+   * A flat emitter: a light box, a soft panel, a lit surface. Physically it is a spot,
+   * but like a `wash` it brings no housing — the thing you see is geometry the scene owns,
+   * and the fixture supplies only the throw leaving its face. Wide angle and a soft edge
+   * are the defaults because a panel spreads light, it does not point at something.
+   */
+  panel: {
+    id: 'panel',
+    label: 'Panel',
+    omnidirectional: false,
+    aimable: true,
+    shadowPassCost: SHADOW_PASS_COST.perspective,
+    defaults: {
+      color: '#ffffff',
+      intensity: 3,
+      params: { distance: 14, decay: 2, angleDeg: 60, penumbra: 0.85 },
+    },
+    params: [
+      num('distance', 'Reach', 14, 0, 40, 0.1, 'm'),
+      num('decay', 'Falloff', 2, 0, 4, 0.1),
+      num('angleDeg', 'Spread', 60, 1, 89, 1, '°'),
+      num('penumbra', 'Edge softness', 0.85, 0, 1, 0.01),
     ],
   },
 
@@ -176,6 +203,15 @@ export function emitsLight(type) {
 
 export function isAimable(type) {
   return typeOrThrow(type).aimable === true;
+}
+
+/**
+ * Whether the type brings its own housing geometry. A `point` or a `spot` is a physical
+ * fixture you can see and select; a `wash` or a `panel` is a spill whose visible form,
+ * if it has one, belongs to the scene.
+ */
+export function hasHousing(type) {
+  return typeOrThrow(type).housing === true;
 }
 
 /**
