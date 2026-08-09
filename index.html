@@ -213,7 +213,8 @@
 <div class="hud interactive" id="floorplanPanel">
   <div class="fpTitle">Live floorplan — <span style="color:#c0392b">red</span> = curtains · <span style="color:#b8860b">gold</span> = screen · <span style="color:#1f9d55">green</span> = doors · <span style="color:#ff3b30">red disc</span> = central beam (dashed = pulse extent) · click ring/screen to edit · press <b>X</b> to close</div>
   <div class="fpBar">
-    <label><input type="checkbox" id="fpUnderlayToggle" checked> architect drawing underlay</label>
+    <!-- Shown only where the architect's drawing is actually present — see initFloorplanPanel. -->
+    <label id="fpUnderlayLabel" hidden><input type="checkbox" id="fpUnderlayToggle" checked> architect drawing underlay</label>
     <button class="smallbtn" id="fpDownload">Download SVG</button>
   </div>
   <div class="fpCanvas" id="fpCanvas"></div>

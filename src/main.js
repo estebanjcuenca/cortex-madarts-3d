@@ -2047,15 +2047,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     const RW = ROOM_M.width, RD = ROOM_M.depth;
     fpSvgEl = fpMk('svg', {viewBox:`${(-RW/2-1).toFixed(2)} -1 ${(RW+2).toFixed(2)} ${(RD+2.6).toFixed(2)}`, preserveAspectRatio:'xMidYMid meet'});
 
-    // Underlay: architect drawing mapped into metre space. SVG transforms apply
-    // right-to-left: shift so the room's top-left inner corner hits the origin, then
-    // scale drawing units → metres.
-    const S = FLOORPLAN_SVG.unitsPerMeter;
+    // Underlay: the architect's drawing, mapped into metre space. Added empty and filled in
+    // later (see the probe below) — it goes in first regardless so that, if the drawing does
+    // turn up, it sits behind the shell and the live drawing rather than on top of them.
     const under = fpMk('g', {});
-    const img = fpMk('image', {x:0, y:0, width:595, height:842, opacity:'0.45',
-      transform:`scale(${(1/S).toFixed(6)}) translate(${-FLOORPLAN_SVG.roomMidX} ${-FLOORPLAN_SVG.roomTopY})`});
-    img.setAttribute('href', FLOORPLAN_SVG.url);
-    under.appendChild(img);
     fpSvgEl.appendChild(under);
 
     // Static shell: double-line walls, entrance opening in the far wall, service box on
@@ -2074,18 +2069,25 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
     fpSvgEl.appendChild(fpOverlay);
     document.getElementById('fpCanvas').appendChild(fpSvgEl);
 
-    const underlayToggle = document.getElementById('fpUnderlayToggle');
-    underlayToggle.addEventListener('change', (e)=>{
+    document.getElementById('fpUnderlayToggle').addEventListener('change', (e)=>{
       under.style.display = e.target.checked ? '' : 'none';
     });
-    // Presence decides, not the build mode: whoever has the drawing sees it, and a build
-    // shipped without it says so rather than leaving a ticked box over an empty layer.
-    img.addEventListener('error', ()=>{
-      under.remove();
-      underlayToggle.checked = false;
-      underlayToggle.disabled = true;
-      underlayToggle.closest('label').append(' (not included in this build)');
-    });
+    // The architect's drawing is not published (README), so the build tells us whether this
+    // one has it (vite.config.js). Where it does, the underlay and its checkbox appear; where
+    // it does not, the panel is just the live drawing — no control advertising a missing file,
+    // no request for it, and so nothing in the console either.
+    // typeof, because a dev server started before this constant existed would otherwise
+    // throw a ReferenceError here and take the whole scene down over an optional underlay.
+    if(typeof __HAS_FLOORPLAN_UNDERLAY__ !== 'undefined' && __HAS_FLOORPLAN_UNDERLAY__){
+      // SVG transforms apply right-to-left: shift so the room's top-left inner corner hits
+      // the origin, then scale drawing units → metres.
+      const S = FLOORPLAN_SVG.unitsPerMeter;
+      const img = fpMk('image', {x:0, y:0, width:595, height:842, opacity:'0.45',
+        transform:`scale(${(1/S).toFixed(6)}) translate(${-FLOORPLAN_SVG.roomMidX} ${-FLOORPLAN_SVG.roomTopY})`});
+      img.setAttribute('href', FLOORPLAN_SVG.url);
+      under.appendChild(img);
+      document.getElementById('fpUnderlayLabel').hidden = false;
+    }
     document.getElementById('fpDownload').addEventListener('click', ()=>{
       const clone = fpSvgEl.cloneNode(true);
       clone.setAttribute('xmlns', FP_NS);
