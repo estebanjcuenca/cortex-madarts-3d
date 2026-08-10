@@ -12,8 +12,10 @@ import { onVisualSettingsChange } from '../settings/visualSettings.js';
  * than blocking startup, because a broken autosave must never cost someone the scene.
  */
 
-export const AUTOSAVE_KEY = 'cortex.stage.autosave.v1';
-export const SCHEMA_VERSION = 1;
+// v2: invalidate stale v1 records so returning visitors pick up the new box defaults
+// instead of an old local placement from before the site default moved.
+export const AUTOSAVE_KEY = 'cortex.stage.autosave.v2';
+export const SCHEMA_VERSION = 2;
 const DEBOUNCE_MS = 500;
 
 function storage() {

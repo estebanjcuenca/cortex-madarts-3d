@@ -246,14 +246,14 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
    * Yaw 0° faces +z (down the room, away from the booth wall); the default sits it on the
    * far wall facing back toward the central space.
    */
-  const BOX_WALL_STANDOFF_M = 1.4;   // distance from the wall it stands against
   const BOX_FACE_GAP_M = 0.02;       // the emitter sits just clear of the lit face, not inside it
+  // Site default: left far-wall placement (matches the intended venue layout).
   const boxDefaults = {
-    x: BOX_X_M, y: 1.2, z: ROOM_M.depth - BOX_WALL_STANDOFF_M,
+    x: BOX_X_M, y: 1.2, z: 22.24,
     yaw: 180, pitch: 0, roll: 0,
-    width: 0.6, height: 2.4, depth: 0.35,
+    width: 1.35, height: 2.4, depth: 0.05,
     // What the box throws into the room, straight out of its lit face.
-    intensity: 3, spread: 60, softness: 0.85, reach: 14, falloff: 2,
+    intensity: 8.1, spread: 60, softness: 0.28, reach: 40, falloff: 1.1,
   };
   let box = { ...boxDefaults };
 

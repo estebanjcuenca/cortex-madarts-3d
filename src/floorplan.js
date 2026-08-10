@@ -118,8 +118,8 @@ export const PLAN_RINGS = [
 // Entrance: far wall, right side, 2.52 m wide.
 export const DOOR_M = { x: 3.8, z: 22.34, width: 2.52 };
 
-// Background / booth massing along the near wall (right of center).
-export const BOX_X_M = 4.48;
+// Background light box — far wall, left of centre (site default placement).
+export const BOX_X_M = -4.02;
 
 // Duct / sprinkler circles on the right wall (z from near wall).
 export const SPRINKLER_Z_M = [7.2, 13.56, 16.65, 19.75];
