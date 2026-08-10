@@ -102,6 +102,20 @@ export function startAutosave({ collect }) {
     timer = setTimeout(saveNow, DEBOUNCE_MS);
   }
 
+  // Debounce is fine while editing, but a reload or tab close inside the window must not
+  // drop the last placement / light change — flush any pending write immediately.
+  function flushOnLeave() {
+    if (stopped || timer == null) return;
+    clearTimeout(timer);
+    timer = null;
+    saveNow();
+  }
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') flushOnLeave();
+  };
+  window.addEventListener('pagehide', flushOnLeave);
+  document.addEventListener('visibilitychange', onVisibility);
+
   const unsubscribe = [
     on(EVENTS.FIXTURES_CHANGED, schedule),
     onVisualSettingsChange(schedule),
@@ -113,6 +127,9 @@ export function startAutosave({ collect }) {
     stop() {
       stopped = true;
       clearTimeout(timer);
+      timer = null;
+      window.removeEventListener('pagehide', flushOnLeave);
+      document.removeEventListener('visibilitychange', onVisibility);
       unsubscribe.forEach((off) => off());
     },
   };

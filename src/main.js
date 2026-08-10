@@ -1206,7 +1206,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
   applyCentralLightSettings();
 
   // Everything the user tunes is restored before autosave starts listening, so replaying
-  // the saved state cannot be mistaken for fresh edits.
+  // the saved state cannot be mistaken for fresh edits. Autosave must start *before* the
+  // async media load: otherwise box / offset / door edits during that wait call
+  // `autosave?.schedule()` while it is still null and never reach localStorage.
   async function restoreWorkingState(){
     const saved = savedState ? { state: savedState } : null;
     if(saved){
@@ -1220,16 +1222,6 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
       applyFabricLighting();
       applySceneFillLights();
       applyCentralLightSettings();
-    }
-
-    // A saved file wins over a saved URL: it is the one that always loads.
-    restoringMedia = true;
-    try {
-      const media = await loadDefaultMedia();
-      if(media?.blob) await screenMedia.loadFile(new File([media.blob], media.name, {type:media.type}));
-      else if(saved?.state.screen?.url) await screenMedia.loadUrl(saved.state.screen.url);
-    } finally {
-      restoringMedia = false;
     }
 
     autosave = startAutosave({
@@ -1255,6 +1247,16 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
         };
       },
     });
+
+    // A saved file wins over a saved URL: it is the one that always loads.
+    restoringMedia = true;
+    try {
+      const media = await loadDefaultMedia();
+      if(media?.blob) await screenMedia.loadFile(new File([media.blob], media.name, {type:media.type}));
+      else if(saved?.state.screen?.url) await screenMedia.loadUrl(saved.state.screen.url);
+    } finally {
+      restoringMedia = false;
+    }
   }
   restoreWorkingState();
 
