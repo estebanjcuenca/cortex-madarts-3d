@@ -102,6 +102,10 @@ manufacturer photometric data, a universe/address/channel model, and a patch exp
 on the `Fixture` record specifically so this can be added without restructuring. Adding it means
 extending `fixtureTypes.js` and the inspector — not redesigning the lighting system.
 
+**Owner note (2026-08-09)**: Live DMX control is expected to stay in another program. Prefer exploring
+a look/cue handoff to TouchDesigner (or similar) before investing in a full patch UI here — see
+**B11**.
+
 ---
 
 ## B6 — Multi-user real-time collaboration
@@ -175,6 +179,37 @@ Second follow-up: the mode renders to the canvas, so "Save image" produces a PNG
 the same edge set would make it a drawing the architects can drop straight into a document, the way
 the 2D floorplan panel already exports. The edge geometry is already computed; it needs projecting
 through the camera and serialising.
+
+---
+
+## B11 — Cue / look export for TouchDesigner (file-first, OSC later)
+
+**Origin**: Owner discussion 2026-08-09 · adjacent to [B5](#b5--dmx-patch-and-real-fixture-profiles)
+(DMX stays elsewhere) and [B7](#b7--cad-round-trip-dxf--ifc) (this app owns design truth; other
+tools own shop drawings and live control)
+
+**Status**: Not started. Worth exploring after 005 looks and the stage document land.
+
+Keep Cortex as the spatial / mood designer. Do **not** put a lighting console or DMX engine in this
+app. Export the designed looks so TouchDesigner (or similar show software) can drive media and
+realtime control.
+
+**Phase A — file export (fits static hosting, no server):**
+- Export named looks as a simple cue file (JSON or CSV): fixture id, colour, intensity, enabled,
+  aim, and relevant params
+- Optionally include global mood (exposure, bloom, fabric wash) so TD can match the preview
+- Load path in TD is file-drop or a watched folder — same collaboration pattern as `.cortex.json`
+
+**Phase B — live link (only if Phase A proves useful):**
+- Local OSC or WebSocket bridge from a small sidecar process on the show machine
+- Not from the GitHub Pages deploy itself (Constitution I: static files only, no server-side logic)
+
+**Depends on**: 005 looks + fixture inventory as stable data (US1 / stage document). Revisit once
+those can be exported without scraping the scene graph.
+
+**Related manufacturing note** (not this item): curtain cut sizes and install measures should grow
+from 005's measurement schedule and [B10](#b10--line-drawing-mode-real-panel-seams-and-vector-export)
+once technicians confirm panel widths — separate from the TD handoff.
 
 ---
 
